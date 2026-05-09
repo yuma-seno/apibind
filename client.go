@@ -2,6 +2,7 @@ package apibind
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -44,7 +45,7 @@ func NewClient(baseURL string) *Client {
 // fields) and send it as the request body.
 // HTTP errors (4xx/5xx) are returned as *APIError.
 // Use errors.Is(err, apibind.ErrBadRequest) to check the error type.
-func Call[Req, Resp any](c *Client, ep Endpoint[Req, Resp], req Req) (Resp, error) {
+func Call[Req, Resp any](ctx context.Context, c *Client, ep Endpoint[Req, Resp], req Req) (Resp, error) {
 	var zero Resp
 
 	// Build URL
@@ -68,13 +69,13 @@ func Call[Req, Resp any](c *Client, ep Endpoint[Req, Resp], req Req) (Resp, erro
 		if encErr != nil {
 			return zero, fmt.Errorf("failed to encode request: %w", encErr)
 		}
-		httpReq, err = http.NewRequest(string(ep.Method), url, bytes.NewReader(data))
+		httpReq, err = http.NewRequestWithContext(ctx, string(ep.Method), url, bytes.NewReader(data))
 		if err != nil {
 			return zero, err
 		}
 		httpReq.Header.Set("Content-Type", "application/json")
 	} else {
-		httpReq, err = http.NewRequest(string(ep.Method), url, nil)
+		httpReq, err = http.NewRequestWithContext(ctx, string(ep.Method), url, nil)
 		if err != nil {
 			return zero, err
 		}
