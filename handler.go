@@ -8,7 +8,7 @@ import (
 
 // Handler returns an http.HandlerFunc that handles requests for this endpoint.
 //
-// For POST and PUT requests, the request body is decoded as JSON into Req.
+// For POST, PUT, and PATCH requests, the request body is decoded as JSON into Req.
 // If decoding fails, Handler responds with 400 Bad Request.
 // For other methods (GET, DELETE, etc.), req is the zero value of Req.
 //
@@ -33,7 +33,7 @@ import (
 func (ep Endpoint[Req, Resp]) Handler(fn func(r *http.Request, req Req) (Resp, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req Req
-		if ep.Method == http.MethodPost || ep.Method == http.MethodPut {
+		if ep.Method == http.MethodPost || ep.Method == http.MethodPut || ep.Method == http.MethodPatch {
 			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 				writeJSONError(w, &APIError{StatusCode: http.StatusBadRequest, Message: "invalid request body"})
 				return

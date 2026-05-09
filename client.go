@@ -38,9 +38,10 @@ func NewClient(baseURL string) *Client {
 
 // Call sends an HTTP request to the given endpoint and returns a typed response.
 //
-// GET and DELETE requests are sent without a body.
-// POST and PUT requests encode req as JSON (excluding path parameter fields) and
-// send it as the request body.
+// GET and DELETE requests are sent without a body; remaining fields are sent as
+// URL query parameters.
+// POST, PUT, and PATCH requests encode req as JSON (excluding path parameter
+// fields) and send it as the request body.
 // HTTP errors (4xx/5xx) are returned as *APIError.
 // Use errors.Is(err, apibind.ErrBadRequest) to check the error type.
 func Call[Req, Resp any](c *Client, ep Endpoint[Req, Resp], req Req) (Resp, error) {
@@ -62,7 +63,7 @@ func Call[Req, Resp any](c *Client, ep Endpoint[Req, Resp], req Req) (Resp, erro
 	// Build the request
 	var httpReq *http.Request
 	var err error
-	if ep.Method == http.MethodPost || ep.Method == http.MethodPut {
+	if ep.Method == http.MethodPost || ep.Method == http.MethodPut || ep.Method == http.MethodPatch {
 		data, encErr := ep.Path.BuildBody(req)
 		if encErr != nil {
 			return zero, fmt.Errorf("failed to encode request: %w", encErr)
