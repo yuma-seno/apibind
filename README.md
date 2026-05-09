@@ -56,7 +56,7 @@ mux.HandleFunc(shared.CreateUserAPI.RoutePattern(), shared.CreateUserAPI.Handler
 
 var client = apibind.NewClient("") // empty = same origin
 
-resp, err := apibind.Call(client, shared.CreateUserAPI, shared.CreateUserRequest{
+resp, err := apibind.Call(context.Background(), client, shared.CreateUserAPI, shared.CreateUserRequest{
     Name:  "Alice",
     Email: "alice@example.com",
 })
@@ -73,7 +73,7 @@ fmt.Println(resp.ID, resp.Name)
 
 `apibind` automatically routes request fields to the correct part of the HTTP request based on the method and how the path is defined:
 
-| | `GET` / `DELETE` | `POST` / `PUT` |
+| | `GET` / `DELETE` | `POST` / `PUT` / `PATCH` |
 |---|---|---|
 | **Path params** (`P()`) | Substituted into the URL path | Substituted into the URL path |
 | **All other fields** | URL query string (`?key=value`) | JSON request body |
@@ -99,7 +99,7 @@ var UpdateUserAPI = apibind.Endpoint[UpdateUserRequest, User]{
 
 ```go
 // Frontend
-resp, err := apibind.Call(client, shared.UpdateUserAPI, shared.UpdateUserRequest{
+resp, err := apibind.Call(context.Background(), client, shared.UpdateUserAPI, shared.UpdateUserRequest{
     ID:   "123",
     Name: "Alice",
 })
@@ -141,7 +141,7 @@ var ListUsersAPI = apibind.Endpoint[ListUsersRequest, []User]{
 ```go
 // Frontend
 page, limit := 1, 20
-resp, err := apibind.Call(client, shared.ListUsersAPI, shared.ListUsersRequest{
+resp, err := apibind.Call(context.Background(), client, shared.ListUsersAPI, shared.ListUsersRequest{
     Page:  &page,
     Limit: &limit,
     // Name: nil â†’ omitted
@@ -237,11 +237,11 @@ client := apibind.NewClient("http://localhost:8080")   // remote or test server
 Sends the HTTP request defined by the endpoint and returns the typed response.
 
 ```go
-resp, err := apibind.Call(client, MyAPI, req)
+resp, err := apibind.Call(ctx, client, MyAPI, req)
 ```
 
 - `GET` / `DELETE`: path params in URL path, all other fields as query parameters
-- `POST` / `PUT`: path params in URL path, all other fields as JSON body (path param fields are excluded from the body automatically)
+- `POST` / `PUT` / `PATCH`: path params in URL path, all other fields as JSON body (path param fields are excluded from the body automatically)
 - HTTP 4xx/5xx: returned as `*APIError`
 
 ### Error handling
@@ -277,8 +277,12 @@ This is the Go equivalent of what [tRPC](https://trpc.io/) does for TypeScript â
 
 ## Requirements
 
-- Go 1.22 or later (`r.PathValue` requires Go 1.22; generics require Go 1.18+)
+- Go 1.23.0 or later
 - Works with standard `net/http`, including Go's WebAssembly runtime
+
+## Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines on branch strategy, commit messages, and how to submit a pull request.
 
 ## License
 
