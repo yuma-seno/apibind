@@ -1,0 +1,21 @@
+name: Feature Request
+description: Propose a new feature or improvement
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or motivation
+      description: What problem does this solve? Why is it useful?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed API or behavior
+      description: Show a code example if possible.
+      render: go
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
