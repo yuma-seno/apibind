@@ -69,6 +69,12 @@ if err != nil {
 fmt.Println(resp.ID, resp.Name)
 ```
 
+## Example Project
+
+A complete, runnable example of apibind in a Go + WebAssembly full-stack application:
+
+**[go-web-fullstack-template](https://github.com/yuma-seno/go-web-fullstack-template)** — Text analysis app with shared API types, go-app SPA frontend, and gomponents SSR preview.
+
 ## How Parameters Are Sent
 
 `apibind` automatically routes request fields to the correct part of the HTTP request based on the method and how the path is defined:
