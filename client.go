@@ -138,12 +138,6 @@ func Call[Req, Resp any](ctx context.Context, c *Client, ep Endpoint[Req, Resp],
 			return zero, err
 		}
 		return result, nil
-	} else if decoder, ok := any(result).(ResponseDecoder); ok {
-		if err := decoder.DecodeResponse(resp.Body); err != nil {
-			resp.Body.Close()
-			return zero, err
-		}
-		return result, nil
 	}
 
 	defer resp.Body.Close()

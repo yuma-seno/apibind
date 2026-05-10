@@ -43,11 +43,6 @@ func (ep Endpoint[Req, Resp]) Handler(fn func(r *http.Request, req Req) (Resp, e
 					writeJSONError(w, &APIError{StatusCode: http.StatusBadRequest, Message: "invalid request"})
 					return
 				}
-			} else if ptr, ok := any(req).(RequestDecoder); ok {
-				if err := ptr.DecodeRequest(r); err != nil {
-					writeJSONError(w, &APIError{StatusCode: http.StatusBadRequest, Message: "invalid request"})
-					return
-				}
 			} else {
 				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 					writeJSONError(w, &APIError{StatusCode: http.StatusBadRequest, Message: "invalid request body"})

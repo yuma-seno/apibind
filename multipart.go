@@ -1,6 +1,7 @@
 package apibind
 
 import (
+	"fmt"
 	"io"
 	"mime/multipart"
 )
@@ -26,13 +27,25 @@ type MultipartField struct {
 //	    )
 //	}
 func NewMultipartBody(fields ...MultipartField) (contentType string, body io.Reader, err error) {
+	for _, f := range fields {
+		if f.Name == "" {
+			return "", nil, fmt.Errorf("multipart field name is required")
+		}
+		if f.FileName != "" && f.Reader == nil {
+			return "", nil, fmt.Errorf("multipart file field %q: Reader is required when FileName is set", f.Name)
+		}
+		if f.FileName == "" && f.Reader != nil {
+			return "", nil, fmt.Errorf("multipart field %q: FileName is required when Reader is set", f.Name)
+		}
+	}
+
 	pr, pw := io.Pipe()
 	mw := multipart.NewWriter(pw)
 
 	go func() {
 		defer pw.Close()
 		for _, f := range fields {
-			if f.FileName != "" && f.Reader != nil {
+			if f.FileName != "" {
 				fw, ferr := mw.CreateFormFile(f.Name, f.FileName)
 				if ferr != nil {
 					pw.CloseWithError(ferr)

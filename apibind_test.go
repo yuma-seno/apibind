@@ -513,7 +513,10 @@ type xmlReq struct {
 }
 
 func (r xmlReq) RequestBody() (string, io.Reader, error) {
-	data, _ := xml.Marshal(r)
+	data, err := xml.Marshal(r)
+	if err != nil {
+		return "", nil, err
+	}
 	return "application/xml", bytes.NewReader(data), nil
 }
 
@@ -531,8 +534,13 @@ func TestCall_RequestBody_CustomEncoding(t *testing.T) {
 			t.Errorf("expected Content-Type application/xml, got %s", ct)
 		}
 		var req xmlReq
-		data, _ := io.ReadAll(r.Body)
-		xml.Unmarshal(data, &req)
+		data, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read request body: %v", err)
+		}
+		if err := xml.Unmarshal(data, &req); err != nil {
+			t.Fatalf("unmarshal xml request body: %v", err)
+		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"result": "hello " + req.Name})
 	}))
@@ -660,6 +668,15 @@ func TestCall_Multipart_Upload(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestNewMultipartBody_InvalidFieldCombination(t *testing.T) {
+	_, _, err := apibind.NewMultipartBody(
+		apibind.MultipartField{Name: "file", FileName: "a.txt"},
+	)
+	if err == nil {
+		t.Fatal("expected error when FileName is set but Reader is nil")
 	}
 }
 
