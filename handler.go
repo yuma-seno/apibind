@@ -70,10 +70,10 @@ func (ep Endpoint[Req, Resp]) Handler(fn func(r *http.Request, req Req) (Resp, e
 		// WriteResponse is responsible for writing the full response (including
 		// any error state); no additional write is made after it returns.
 		if encoder, ok := any(&resp).(ResponseEncoder); ok {
-			encoder.WriteResponse(w) //nolint:errcheck
+			encoder.WriteResponse(w) //nolint:errcheck // WriteResponse owns error handling
 			return
 		} else if encoder, ok := any(resp).(ResponseEncoder); ok {
-			encoder.WriteResponse(w) //nolint:errcheck
+			encoder.WriteResponse(w) //nolint:errcheck // WriteResponse owns error handling
 			return
 		}
 

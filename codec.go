@@ -94,7 +94,7 @@ func (s *Stream) WriteResponse(w http.ResponseWriter) error {
 		w.Header().Set("Content-Type", s.ContentType)
 	}
 	_, copyErr := io.Copy(w, s.Body)
-	s.Body.Close() //nolint:errcheck
+	s.Body.Close() //nolint:errcheck // close errors cannot be reported after copy
 	// Return only the copy error: a close error after a successful copy
 	// cannot be reported to the client (headers are already sent), and
 	// returning it would cause Handler to attempt a second error write.
