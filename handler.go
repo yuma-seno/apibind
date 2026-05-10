@@ -40,7 +40,7 @@ func (ep Endpoint[Req, Resp]) Handler(fn func(r *http.Request, req Req) (Resp, e
 		if ep.Method == http.MethodPost || ep.Method == http.MethodPut || ep.Method == http.MethodPatch {
 			if decoder, ok := any(&req).(RequestDecoder); ok {
 				if err := decoder.DecodeRequest(r); err != nil {
-					writeJSONError(w, &APIError{StatusCode: http.StatusBadRequest, Message: "invalid request"})
+					writeJSONError(w, &APIError{StatusCode: http.StatusBadRequest, Message: "invalid request body"})
 					return
 				}
 			} else {
@@ -69,11 +69,14 @@ func (ep Endpoint[Req, Resp]) Handler(fn func(r *http.Request, req Req) (Resp, e
 		// Custom response encoding (takes highest precedence).
 		// WriteResponse is responsible for writing the full response
 		// (including any error state); no additional write is made after it returns.
-		if encoder, ok := any(&resp).(ResponseEncoder); ok {
-			encoder.WriteResponse(w)
-			return
-		} else if encoder, ok := any(resp).(ResponseEncoder); ok {
-			encoder.WriteResponse(w)
+		var respEncoder ResponseEncoder
+		if e, ok := any(&resp).(ResponseEncoder); ok {
+			respEncoder = e
+		} else if e, ok := any(resp).(ResponseEncoder); ok {
+			respEncoder = e
+		}
+		if respEncoder != nil {
+			respEncoder.WriteResponse(w)
 			return
 		}
 

@@ -70,20 +70,14 @@ func Call[Req, Resp any](ctx context.Context, c *Client, ep Endpoint[Req, Resp],
 	var httpReq *http.Request
 	var err error
 	if ep.Method == http.MethodPost || ep.Method == http.MethodPut || ep.Method == http.MethodPatch {
-		if encoder, ok := any(&req).(RequestBody); ok {
-			ct, bodyReader, encErr := encoder.RequestBody()
-			if encErr != nil {
-				return zero, fmt.Errorf("failed to encode request: %w", encErr)
-			}
-			httpReq, err = http.NewRequestWithContext(ctx, string(ep.Method), url, bodyReader)
-			if err != nil {
-				return zero, err
-			}
-			if ct != "" {
-				httpReq.Header.Set("Content-Type", ct)
-			}
-		} else if encoder, ok := any(req).(RequestBody); ok {
-			ct, bodyReader, encErr := encoder.RequestBody()
+		var reqEncoder RequestBody
+		if e, ok := any(&req).(RequestBody); ok {
+			reqEncoder = e
+		} else if e, ok := any(req).(RequestBody); ok {
+			reqEncoder = e
+		}
+		if reqEncoder != nil {
+			ct, bodyReader, encErr := reqEncoder.RequestBody()
 			if encErr != nil {
 				return zero, fmt.Errorf("failed to encode request: %w", encErr)
 			}
