@@ -736,10 +736,9 @@ type countedResp struct {
 	Message string
 }
 
-func (r countedResp) WriteResponse(w http.ResponseWriter) error {
+func (r countedResp) WriteResponse(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/plain")
-	_, err := fmt.Fprintf(w, "counted(%d): %s", len(r.Message), r.Message)
-	return err
+	fmt.Fprintf(w, "counted(%d): %s", len(r.Message), r.Message) //nolint:errcheck
 }
 
 func TestHandler_ResponseEncoder(t *testing.T) {

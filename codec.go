@@ -1,7 +1,6 @@
 package apibind
 
 import (
-	"errors"
 	"io"
 	"net/http"
 )
@@ -44,15 +43,14 @@ type RequestDecoder interface {
 // the default JSON encoding and the HTML special case.
 //
 // WriteResponse is responsible for the complete response (status code,
-// headers, and body). If WriteResponse encounters an error after it has
-// started writing, it must handle the error itself because Handler will
-// not attempt any further write.
+// headers, body, and any error reporting). Handler will not make any
+// additional writes after WriteResponse returns.
 //
 // The Endpoint Resp type parameter should be a non-pointer type;
 // implementations are typically on the pointer receiver (*Resp) so
 // that Handler can detect them via the &resp assertion.
 type ResponseEncoder interface {
-	WriteResponse(w http.ResponseWriter) error
+	WriteResponse(w http.ResponseWriter)
 }
 
 // Stream is a helper type for streaming binary data in HTTP responses.
@@ -86,17 +84,14 @@ func (s *Stream) DecodeResponse(body io.ReadCloser) error {
 }
 
 // WriteResponse implements ResponseEncoder for streaming file serving.
-func (s *Stream) WriteResponse(w http.ResponseWriter) error {
+func (s *Stream) WriteResponse(w http.ResponseWriter) {
 	if s.Body == nil {
-		return errors.New("stream: Body is nil")
+		http.Error(w, "stream: Body is nil", http.StatusInternalServerError)
+		return
 	}
 	if s.ContentType != "" {
 		w.Header().Set("Content-Type", s.ContentType)
 	}
-	_, copyErr := io.Copy(w, s.Body)
-	s.Body.Close() //nolint:errcheck // close errors cannot be reported after copy
-	// Return only the copy error: a close error after a successful copy
-	// cannot be reported to the client (headers are already sent), and
-	// returning it would cause Handler to attempt a second error write.
-	return copyErr
+	io.Copy(w, s.Body) //nolint:errcheck // write errors cannot be acted on once writing has begun
+	s.Body.Close()     //nolint:errcheck // close errors cannot be reported after copy
 }
