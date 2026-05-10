@@ -77,24 +77,10 @@ func (ep Endpoint[Req, Resp]) Handler(fn func(r *http.Request, req Req) (Resp, e
 				writeJSONError(w, &APIError{StatusCode: http.StatusInternalServerError, Message: "failed to write response"})
 			}
 			return
-		}
-		if encoder, ok := any(resp).(ResponseEncoder); ok {
+		} else if encoder, ok := any(resp).(ResponseEncoder); ok {
 			if werr := encoder.WriteResponse(w); werr != nil {
 				writeJSONError(w, &APIError{StatusCode: http.StatusInternalServerError, Message: "failed to write response"})
 			}
-			return
-		}
-		if encoder, ok := any(resp).(ResponseEncoder); ok {
-			if werr := encoder.WriteResponse(w); werr != nil {
-				writeJSONError(w, &APIError{StatusCode: http.StatusInternalServerError, Message: "failed to write response"})
-			}
-			return
-		}
-
-		// HTML type support
-		if html, ok := any(resp).(HTML); ok {
-			w.Header().Set("Content-Type", "text/html; charset=utf-8")
-			w.Write([]byte(html)) //nolint:errcheck
 			return
 		}
 

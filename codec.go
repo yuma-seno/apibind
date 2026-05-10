@@ -41,7 +41,7 @@ type RequestDecoder interface {
 // on the server side. When implemented, it takes precedence over
 // the default JSON encoding and the HTML special case.
 //
-// Req should be a non-pointer type when implementing this interface.
+// Resp should be a non-pointer type when implementing this interface.
 type ResponseEncoder interface {
 	WriteResponse(w http.ResponseWriter) error
 }
