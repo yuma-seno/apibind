@@ -32,7 +32,9 @@ type ResponseDecoder interface {
 // so they are NOT available during DecodeRequest. Implementations that
 // need path param values must extract them from r.PathValue directly.
 //
-// Req should be a non-pointer type when implementing this interface.
+// The Endpoint Req type parameter should be a non-pointer type;
+// implementations are typically on the pointer receiver (*Req) so
+// that Handler can detect them via the &req assertion.
 type RequestDecoder interface {
 	DecodeRequest(r *http.Request) error
 }
@@ -41,7 +43,14 @@ type RequestDecoder interface {
 // on the server side. When implemented, it takes precedence over
 // the default JSON encoding and the HTML special case.
 //
-// Resp should be a non-pointer type when implementing this interface.
+// WriteResponse is responsible for the complete response (status code,
+// headers, and body). If WriteResponse encounters an error after it has
+// started writing, it must handle the error itself because Handler will
+// not attempt any further write.
+//
+// The Endpoint Resp type parameter should be a non-pointer type;
+// implementations are typically on the pointer receiver (*Resp) so
+// that Handler can detect them via the &resp assertion.
 type ResponseEncoder interface {
 	WriteResponse(w http.ResponseWriter) error
 }
@@ -85,9 +94,9 @@ func (s *Stream) WriteResponse(w http.ResponseWriter) error {
 		w.Header().Set("Content-Type", s.ContentType)
 	}
 	_, copyErr := io.Copy(w, s.Body)
-	closeErr := s.Body.Close()
-	if copyErr != nil {
-		return copyErr
-	}
-	return closeErr
+	s.Body.Close() //nolint:errcheck
+	// Return only the copy error: a close error after a successful copy
+	// cannot be reported to the client (headers are already sent), and
+	// returning it would cause Handler to attempt a second error write.
+	return copyErr
 }

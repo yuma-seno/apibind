@@ -66,16 +66,14 @@ func (ep Endpoint[Req, Resp]) Handler(fn func(r *http.Request, req Req) (Resp, e
 			return
 		}
 
-		// Custom response encoding (takes highest precedence)
+		// Custom response encoding (takes highest precedence).
+		// WriteResponse is responsible for writing the full response (including
+		// any error state); no additional write is made after it returns.
 		if encoder, ok := any(&resp).(ResponseEncoder); ok {
-			if werr := encoder.WriteResponse(w); werr != nil {
-				writeJSONError(w, &APIError{StatusCode: http.StatusInternalServerError, Message: "failed to write response"})
-			}
+			encoder.WriteResponse(w) //nolint:errcheck
 			return
 		} else if encoder, ok := any(resp).(ResponseEncoder); ok {
-			if werr := encoder.WriteResponse(w); werr != nil {
-				writeJSONError(w, &APIError{StatusCode: http.StatusInternalServerError, Message: "failed to write response"})
-			}
+			encoder.WriteResponse(w) //nolint:errcheck
 			return
 		}
 
