@@ -84,7 +84,10 @@ func (s *Stream) WriteResponse(w http.ResponseWriter) error {
 	if s.ContentType != "" {
 		w.Header().Set("Content-Type", s.ContentType)
 	}
-	_, err := io.Copy(w, s.Body)
-	s.Body.Close()
-	return err
+	_, copyErr := io.Copy(w, s.Body)
+	closeErr := s.Body.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	return closeErr
 }

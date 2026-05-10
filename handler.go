@@ -79,6 +79,13 @@ func (ep Endpoint[Req, Resp]) Handler(fn func(r *http.Request, req Req) (Resp, e
 			return
 		}
 
+		// HTML type support
+		if html, ok := any(resp).(HTML); ok {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Write([]byte(html)) //nolint:errcheck
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp) //nolint:errcheck
 	}

@@ -79,7 +79,9 @@ func Call[Req, Resp any](ctx context.Context, c *Client, ep Endpoint[Req, Resp],
 			if err != nil {
 				return zero, err
 			}
-			httpReq.Header.Set("Content-Type", ct)
+			if ct != "" {
+				httpReq.Header.Set("Content-Type", ct)
+			}
 		} else if encoder, ok := any(req).(RequestBody); ok {
 			ct, bodyReader, encErr := encoder.RequestBody()
 			if encErr != nil {
@@ -89,7 +91,9 @@ func Call[Req, Resp any](ctx context.Context, c *Client, ep Endpoint[Req, Resp],
 			if err != nil {
 				return zero, err
 			}
-			httpReq.Header.Set("Content-Type", ct)
+			if ct != "" {
+				httpReq.Header.Set("Content-Type", ct)
+			}
 		} else {
 			data, encErr := ep.Path.BuildBody(req)
 			if encErr != nil {
