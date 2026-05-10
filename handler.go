@@ -19,6 +19,9 @@ import (
 // error body. Any other error results in a 500 Internal Server Error.
 // On success, Handler responds with 200 OK and the JSON-encoded response.
 //
+// Special case: if fn returns a string, it is treated as HTML and served with
+// Content-Type: text/html; charset=utf-8.
+//
 // The returned http.HandlerFunc is compatible with net/http and any framework
 // that uses the standard net/http handler interface (chi, gorilla/mux, etc.).
 //
@@ -55,13 +58,27 @@ func (ep Endpoint[Req, Resp]) Handler(fn func(r *http.Request, req Req) (Resp, e
 			return
 		}
 
+		// HTML type support
+		if html, ok := any(resp).(HTML); ok {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Write([]byte(html)) //nolint:errcheck
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(resp) //nolint:errcheck
 	}
 }
 
 // writeJSONError writes an APIError as a JSON response.
+// If the error message starts with "<", it is treated as HTML.
 func writeJSONError(w http.ResponseWriter, e *APIError) {
+	if len(e.Message) > 0 && e.Message[0] == '<' {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(e.StatusCode)
+		w.Write([]byte(e.Message)) //nolint:errcheck
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(e.StatusCode)
 	json.NewEncoder(w).Encode(errorBody{Message: e.Message}) //nolint:errcheck
