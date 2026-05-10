@@ -92,6 +92,6 @@ func (s *Stream) WriteResponse(w http.ResponseWriter) {
 	if s.ContentType != "" {
 		w.Header().Set("Content-Type", s.ContentType)
 	}
-	io.Copy(w, s.Body) //nolint:errcheck // write errors cannot be acted on once writing has begun
+	io.Copy(w, s.Body) //nolint:errcheck // write errors cannot be reported to the client: headers are already sent
 	s.Body.Close()     //nolint:errcheck // close errors cannot be reported after copy
 }
