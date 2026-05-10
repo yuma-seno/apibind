@@ -42,7 +42,12 @@ func NewClient(baseURL string) *Client {
 // GET and DELETE requests are sent without a body; remaining fields are sent as
 // URL query parameters.
 // POST, PUT, and PATCH requests encode req as JSON (excluding path parameter
-// fields) and send it as the request body.
+// fields) and send it as the request body, unless req implements [RequestBody].
+//
+// If the response type Resp implements [ResponseDecoder], the raw response body
+// is passed to it and the caller takes ownership (must close it). Otherwise,
+// the response body is decoded as JSON and closed automatically.
+//
 // HTTP errors (4xx/5xx) are returned as *APIError.
 // Use errors.Is(err, apibind.ErrBadRequest) to check the error type.
 func Call[Req, Resp any](ctx context.Context, c *Client, ep Endpoint[Req, Resp], req Req) (Resp, error) {
@@ -65,15 +70,27 @@ func Call[Req, Resp any](ctx context.Context, c *Client, ep Endpoint[Req, Resp],
 	var httpReq *http.Request
 	var err error
 	if ep.Method == http.MethodPost || ep.Method == http.MethodPut || ep.Method == http.MethodPatch {
-		data, encErr := ep.Path.BuildBody(req)
-		if encErr != nil {
-			return zero, fmt.Errorf("failed to encode request: %w", encErr)
+		if encoder, ok := any(req).(RequestBody); ok {
+			ct, bodyReader, encErr := encoder.RequestBody()
+			if encErr != nil {
+				return zero, fmt.Errorf("failed to encode request: %w", encErr)
+			}
+			httpReq, err = http.NewRequestWithContext(ctx, string(ep.Method), url, bodyReader)
+			if err != nil {
+				return zero, err
+			}
+			httpReq.Header.Set("Content-Type", ct)
+		} else {
+			data, encErr := ep.Path.BuildBody(req)
+			if encErr != nil {
+				return zero, fmt.Errorf("failed to encode request: %w", encErr)
+			}
+			httpReq, err = http.NewRequestWithContext(ctx, string(ep.Method), url, bytes.NewReader(data))
+			if err != nil {
+				return zero, err
+			}
+			httpReq.Header.Set("Content-Type", "application/json")
 		}
-		httpReq, err = http.NewRequestWithContext(ctx, string(ep.Method), url, bytes.NewReader(data))
-		if err != nil {
-			return zero, err
-		}
-		httpReq.Header.Set("Content-Type", "application/json")
 	} else {
 		httpReq, err = http.NewRequestWithContext(ctx, string(ep.Method), url, nil)
 		if err != nil {
@@ -91,19 +108,29 @@ func Call[Req, Resp any](ctx context.Context, c *Client, ep Endpoint[Req, Resp],
 	if err != nil {
 		return zero, err
 	}
-	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNoContent {
+		resp.Body.Close()
 		return zero, nil
 	}
 
 	if resp.StatusCode >= 400 {
+		defer resp.Body.Close()
 		var body errorBody
 		json.NewDecoder(resp.Body).Decode(&body) //nolint:errcheck
 		return zero, &APIError{StatusCode: resp.StatusCode, Message: body.Message}
 	}
 
 	var result Resp
+	if decoder, ok := any(&result).(ResponseDecoder); ok {
+		if err := decoder.DecodeResponse(resp.Body); err != nil {
+			resp.Body.Close()
+			return zero, err
+		}
+		return result, nil
+	}
+
+	defer resp.Body.Close()
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return zero, fmt.Errorf("failed to decode response: %w", err)
 	}

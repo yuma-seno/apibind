@@ -1,9 +1,12 @@
 package apibind_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"encoding/xml"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -497,5 +500,278 @@ func TestAPIError_Is(t *testing.T) {
 	}
 	if errors.Is(err, apibind.ErrNotFound) {
 		t.Error("expected errors.Is(err, ErrNotFound) to be false")
+	}
+}
+
+// ---- Custom codec tests ----
+
+// xmlReq implements RequestBody (client-side custom encoding) and RequestDecoder
+// (server-side custom decoding) for XML-based endpoints.
+type xmlReq struct {
+	ID   string `xml:"id"`
+	Name string `xml:"name"`
+}
+
+func (r xmlReq) RequestBody() (string, io.Reader, error) {
+	data, _ := xml.Marshal(r)
+	return "application/xml", bytes.NewReader(data), nil
+}
+
+func (r *xmlReq) DecodeRequest(req *http.Request) error {
+	data, err := io.ReadAll(req.Body)
+	if err != nil {
+		return err
+	}
+return xml.Unmarshal(data, r)
+}
+
+func TestCall_RequestBody_CustomEncoding(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if ct := r.Header.Get("Content-Type"); ct != "application/xml" {
+			t.Errorf("expected Content-Type application/xml, got %s", ct)
+		}
+		var req xmlReq
+		data, _ := io.ReadAll(r.Body)
+		xml.Unmarshal(data, &req)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"result": "hello " + req.Name})
+	}))
+	defer srv.Close()
+
+	ep := apibind.Endpoint[xmlReq, map[string]string]{
+		Method: apibind.MethodPost,
+		Path:   apibind.NewPath[xmlReq]().S("/api/xml"),
+	}
+	client := apibind.NewClient(srv.URL)
+	resp, err := apibind.Call(context.Background(), client, ep, xmlReq{Name: "Alice"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp["result"] != "hello Alice" {
+		t.Errorf("expected 'hello Alice', got %q", resp["result"])
+	}
+}
+
+// rawResp implements ResponseDecoder for raw byte responses.
+type rawResp struct {
+	Data []byte
+}
+
+func (r *rawResp) DecodeResponse(body io.ReadCloser) error {
+	defer body.Close()
+	data, err := io.ReadAll(body)
+	if err != nil {
+		return err
+	}
+	r.Data = data
+	return nil
+}
+
+func TestCall_ResponseDecoder_RawBytes(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Write([]byte("raw binary data"))
+	}))
+	defer srv.Close()
+
+	ep := apibind.Endpoint[getReq, rawResp]{
+		Method: apibind.MethodGet,
+		Path:   apibind.NewPath[getReq]().S("/api/raw"),
+	}
+	client := apibind.NewClient(srv.URL)
+	resp, err := apibind.Call(context.Background(), client, ep, getReq{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if string(resp.Data) != "raw binary data" {
+		t.Errorf("expected 'raw binary data', got %q", string(resp.Data))
+	}
+}
+
+func TestCall_Stream_Download(t *testing.T) {
+	payload := "streamed payload content"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.Write([]byte(payload))
+	}))
+	defer srv.Close()
+
+	ep := apibind.Endpoint[getReq, apibind.Stream]{
+		Method: apibind.MethodGet,
+		Path:   apibind.NewPath[getReq]().S("/api/stream"),
+	}
+	client := apibind.NewClient(srv.URL)
+	stream, err := apibind.Call(context.Background(), client, ep, getReq{})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer stream.Body.Close()
+	data, _ := io.ReadAll(stream.Body)
+	if string(data) != payload {
+		t.Errorf("expected %q, got %q", payload, string(data))
+	}
+}
+
+// multipartUploadReq implements RequestBody for multipart file upload.
+type multipartUploadReq struct {
+	Title    string
+	Filename string
+	Content  io.Reader
+}
+
+func (r multipartUploadReq) RequestBody() (string, io.Reader, error) {
+	return apibind.NewMultipartBody(
+		apibind.MultipartField{Name: "title", Value: r.Title},
+		apibind.MultipartField{Name: "file", FileName: r.Filename, Reader: r.Content},
+	)
+}
+
+func TestCall_Multipart_Upload(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(1024); err != nil {
+			t.Fatalf("parse multipart: %v", err)
+		}
+		if title := r.FormValue("title"); title != "my file" {
+			t.Errorf("expected title 'my file', got %q", title)
+		}
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			t.Fatalf("form file: %v", err)
+		}
+		defer file.Close()
+		data, _ := io.ReadAll(file)
+		if string(data) != "file content" {
+			t.Errorf("expected 'file content', got %q", string(data))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	}))
+	defer srv.Close()
+
+	ep := apibind.Endpoint[multipartUploadReq, map[string]string]{
+		Method: apibind.MethodPost,
+		Path:   apibind.NewPath[multipartUploadReq]().S("/api/upload"),
+	}
+	client := apibind.NewClient(srv.URL)
+	_, err := apibind.Call(context.Background(), client, ep, multipartUploadReq{
+		Title:    "my file",
+		Filename: "test.txt",
+		Content:  strings.NewReader("file content"),
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// ---- Handler custom codec tests ----
+
+// customReq implements RequestDecoder for server-side custom decoding.
+type customReq struct {
+	ID   string `json:"id"`
+	Data string `json:"data"`
+}
+
+const customContentType = "application/vnd.custom+json"
+
+func (r *customReq) DecodeRequest(req *http.Request) error {
+	var payload struct {
+		ID   string `json:"id"`
+		Data string `json:"data"`
+	}
+	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		return err
+	}
+	r.ID = "custom-" + payload.ID
+	r.Data = payload.Data
+	return nil
+}
+
+func TestHandler_RequestDecoder(t *testing.T) {
+	ep := apibind.Endpoint[customReq, userResp]{
+		Method: apibind.MethodPost,
+		Path:   apibind.NewPath[customReq]().S("/api/custom"),
+	}
+	handler := ep.Handler(func(r *http.Request, req customReq) (userResp, error) {
+		if req.ID != "custom-42" {
+			t.Errorf("expected ID 'custom-42', got %q", req.ID)
+		}
+		return userResp{ID: 42, Name: req.Data}, nil
+	})
+
+	body := `{"id":"42","data":"hello"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/custom", strings.NewReader(body))
+	req.Header.Set("Content-Type", customContentType)
+	w := httptest.NewRecorder()
+	handler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	var resp userResp
+	json.NewDecoder(w.Body).Decode(&resp)
+	if resp.Name != "hello" {
+		t.Errorf("expected name 'hello', got %q", resp.Name)
+	}
+}
+
+// countedResp implements ResponseEncoder for server-side custom response encoding.
+type countedResp struct {
+	Message string
+}
+
+func (r countedResp) WriteResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "text/plain")
+	_, err := fmt.Fprintf(w, "counted(%d): %s", len(r.Message), r.Message)
+	return err
+}
+
+func TestHandler_ResponseEncoder(t *testing.T) {
+	ep := apibind.Endpoint[getReq, countedResp]{
+		Method: apibind.MethodGet,
+		Path:   apibind.NewPath[getReq]().S("/api/counted"),
+	}
+	handler := ep.Handler(func(r *http.Request, req getReq) (countedResp, error) {
+		return countedResp{Message: "test"}, nil
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/counted", nil)
+	w := httptest.NewRecorder()
+	handler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "text/plain" {
+		t.Errorf("expected Content-Type text/plain, got %s", ct)
+	}
+	if body := w.Body.String(); body != "counted(4): test" {
+		t.Errorf("expected 'counted(4): test', got %q", body)
+	}
+}
+
+func TestHandler_Stream_ServeFile(t *testing.T) {
+	ep := apibind.Endpoint[getReq, apibind.Stream]{
+		Method: apibind.MethodGet,
+		Path:   apibind.NewPath[getReq]().S("/api/serve"),
+	}
+	handler := ep.Handler(func(r *http.Request, req getReq) (apibind.Stream, error) {
+		return apibind.Stream{
+			Body:        io.NopCloser(strings.NewReader("file content")),
+			ContentType: "text/plain",
+		}, nil
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/serve", nil)
+	w := httptest.NewRecorder()
+	handler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "text/plain" {
+		t.Errorf("expected Content-Type text/plain, got %s", ct)
+	}
+	if body := w.Body.String(); body != "file content" {
+		t.Errorf("expected 'file content', got %q", body)
 	}
 }

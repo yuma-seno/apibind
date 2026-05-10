@@ -8,7 +8,8 @@ import (
 
 // Handler returns an http.HandlerFunc that handles requests for this endpoint.
 //
-// For POST, PUT, and PATCH requests, the request body is decoded as JSON into Req.
+// For POST, PUT, and PATCH requests, the request body is decoded as JSON into Req,
+// unless Req implements [RequestDecoder] (which takes precedence).
 // If decoding fails, Handler responds with 400 Bad Request.
 // For other methods (GET, DELETE, etc.), req is the zero value of Req.
 //
@@ -17,10 +18,10 @@ import (
 //
 // If fn returns an *APIError, Handler responds with its StatusCode and a JSON
 // error body. Any other error results in a 500 Internal Server Error.
-// On success, Handler responds with 200 OK and the JSON-encoded response.
 //
-// Special case: if fn returns a string, it is treated as HTML and served with
-// Content-Type: text/html; charset=utf-8.
+// If Resp implements [ResponseEncoder], its WriteResponse method is called
+// to produce the response. Otherwise, if Resp is [HTML], it is served as
+// text/html. Otherwise, the response is JSON-encoded.
 //
 // The returned http.HandlerFunc is compatible with net/http and any framework
 // that uses the standard net/http handler interface (chi, gorilla/mux, etc.).
@@ -37,9 +38,16 @@ func (ep Endpoint[Req, Resp]) Handler(fn func(r *http.Request, req Req) (Resp, e
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req Req
 		if ep.Method == http.MethodPost || ep.Method == http.MethodPut || ep.Method == http.MethodPatch {
-			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-				writeJSONError(w, &APIError{StatusCode: http.StatusBadRequest, Message: "invalid request body"})
-				return
+			if decoder, ok := any(&req).(RequestDecoder); ok {
+				if err := decoder.DecodeRequest(r); err != nil {
+					writeJSONError(w, &APIError{StatusCode: http.StatusBadRequest, Message: "invalid request"})
+					return
+				}
+			} else {
+				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+					writeJSONError(w, &APIError{StatusCode: http.StatusBadRequest, Message: "invalid request body"})
+					return
+				}
 			}
 		}
 		ep.Path.SetPathParams(&req, r.PathValue)
@@ -54,6 +62,14 @@ func (ep Endpoint[Req, Resp]) Handler(fn func(r *http.Request, req Req) (Resp, e
 				writeJSONError(w, apiErr)
 			} else {
 				writeJSONError(w, &APIError{StatusCode: http.StatusInternalServerError, Message: "internal server error"})
+			}
+			return
+		}
+
+		// Custom response encoding (takes highest precedence)
+		if encoder, ok := any(&resp).(ResponseEncoder); ok {
+			if werr := encoder.WriteResponse(w); werr != nil {
+				writeJSONError(w, &APIError{StatusCode: http.StatusInternalServerError, Message: "failed to write response"})
 			}
 			return
 		}
@@ -83,4 +99,3 @@ func writeJSONError(w http.ResponseWriter, e *APIError) {
 	w.WriteHeader(e.StatusCode)
 	json.NewEncoder(w).Encode(errorBody{Message: e.Message}) //nolint:errcheck
 }
-
