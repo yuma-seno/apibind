@@ -1,6 +1,7 @@
 package apibind
 
 import (
+	"errors"
 	"io"
 	"net/http"
 )
@@ -16,7 +17,9 @@ type RequestBody interface {
 // on the client side. When implemented, it takes precedence over
 // the default JSON decoding.
 //
-// The implementation takes ownership of body and must close it when done.
+// DecodeResponse takes ownership of body. It must either close the body
+// directly or transfer ownership to the caller (e.g. by storing it in
+// Resp) so that the caller can close it later.
 type ResponseDecoder interface {
 	DecodeResponse(body io.ReadCloser) error
 }
@@ -25,8 +28,11 @@ type ResponseDecoder interface {
 // on the server side. When implemented, it takes precedence over
 // the default JSON body decoding.
 //
-// Path and query parameters are still set automatically before this
-// is called, so they are available in req when DecodeRequest runs.
+// Path and query parameters are set automatically after this is called,
+// so they are NOT available during DecodeRequest. Implementations that
+// need path param values must extract them from r.PathValue directly.
+//
+// Req should be a non-pointer type when implementing this interface.
 type RequestDecoder interface {
 	DecodeRequest(r *http.Request) error
 }
@@ -34,6 +40,8 @@ type RequestDecoder interface {
 // ResponseEncoder allows Resp to write itself as an HTTP response
 // on the server side. When implemented, it takes precedence over
 // the default JSON encoding and the HTML special case.
+//
+// Req should be a non-pointer type when implementing this interface.
 type ResponseEncoder interface {
 	WriteResponse(w http.ResponseWriter) error
 }
@@ -70,6 +78,9 @@ func (s *Stream) DecodeResponse(body io.ReadCloser) error {
 
 // WriteResponse implements ResponseEncoder for streaming file serving.
 func (s *Stream) WriteResponse(w http.ResponseWriter) error {
+	if s.Body == nil {
+		return errors.New("stream: Body is nil")
+	}
 	if s.ContentType != "" {
 		w.Header().Set("Content-Type", s.ContentType)
 	}

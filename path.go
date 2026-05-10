@@ -181,4 +181,3 @@ func (p PathDef[Req]) pathParamAddrs(req *Req) map[uintptr]bool {
 	}
 	return addrs
 }
-

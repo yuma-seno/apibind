@@ -43,6 +43,11 @@ func (ep Endpoint[Req, Resp]) Handler(fn func(r *http.Request, req Req) (Resp, e
 					writeJSONError(w, &APIError{StatusCode: http.StatusBadRequest, Message: "invalid request"})
 					return
 				}
+			} else if ptr, ok := any(req).(RequestDecoder); ok {
+				if err := ptr.DecodeRequest(r); err != nil {
+					writeJSONError(w, &APIError{StatusCode: http.StatusBadRequest, Message: "invalid request"})
+					return
+				}
 			} else {
 				if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 					writeJSONError(w, &APIError{StatusCode: http.StatusBadRequest, Message: "invalid request body"})
@@ -68,6 +73,18 @@ func (ep Endpoint[Req, Resp]) Handler(fn func(r *http.Request, req Req) (Resp, e
 
 		// Custom response encoding (takes highest precedence)
 		if encoder, ok := any(&resp).(ResponseEncoder); ok {
+			if werr := encoder.WriteResponse(w); werr != nil {
+				writeJSONError(w, &APIError{StatusCode: http.StatusInternalServerError, Message: "failed to write response"})
+			}
+			return
+		}
+		if encoder, ok := any(resp).(ResponseEncoder); ok {
+			if werr := encoder.WriteResponse(w); werr != nil {
+				writeJSONError(w, &APIError{StatusCode: http.StatusInternalServerError, Message: "failed to write response"})
+			}
+			return
+		}
+		if encoder, ok := any(resp).(ResponseEncoder); ok {
 			if werr := encoder.WriteResponse(w); werr != nil {
 				writeJSONError(w, &APIError{StatusCode: http.StatusInternalServerError, Message: "failed to write response"})
 			}

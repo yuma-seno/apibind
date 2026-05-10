@@ -49,7 +49,10 @@ func NewMultipartBody(fields ...MultipartField) (contentType string, body io.Rea
 				}
 			}
 		}
-		mw.Close()
+		if cerr := mw.Close(); cerr != nil {
+			pw.CloseWithError(cerr)
+			return
+		}
 	}()
 
 	return mw.FormDataContentType(), pr, nil

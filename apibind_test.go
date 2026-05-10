@@ -522,7 +522,7 @@ func (r *xmlReq) DecodeRequest(req *http.Request) error {
 	if err != nil {
 		return err
 	}
-return xml.Unmarshal(data, r)
+	return xml.Unmarshal(data, r)
 }
 
 func TestCall_RequestBody_CustomEncoding(t *testing.T) {
