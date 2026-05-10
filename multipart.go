@@ -45,7 +45,7 @@ func NewMultipartBody(fields ...MultipartField) (contentType string, body io.Rea
 	go func() {
 		defer pw.Close()
 		for _, f := range fields {
-			if f.FileName != "" {
+			if f.FileName != "" && f.Reader != nil {
 				fw, ferr := mw.CreateFormFile(f.Name, f.FileName)
 				if ferr != nil {
 					pw.CloseWithError(ferr)
